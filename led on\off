@@ -1,0 +1,93 @@
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <TelegramBot.h>
+#include <WiFiClientSecure.h>
+
+// Wi-Fi tarmog'ining ma'lumotlari
+const char* ssid = "sizning wi fi logini";  // Wi-Fi SSID
+const char* password = "sizning wi fi paroli";  // Wi-Fi parol
+
+// Telegram bot token va chat ID
+const String botToken = "sizning bot tokeningiz"; // Telegram bot token
+const String chatID = "sizning id"; // O'zingizning Telegram chat ID'ingiz
+
+// LED pinini sozlash
+const int ledPin = 2;  // GPIO2 pinida LED bor
+
+WiFiClientSecure client;
+TelegramBot bot(botToken, client); // Telegram bot obyekti
+
+AsyncWebServer server(80); // Veb server porti
+
+// Sayt orqali LEDni yoqish
+void handleLEDOn(AsyncWebServerRequest *request) {
+  digitalWrite(ledPin, HIGH);  // LED ni yoqish
+  bot.sendMessage(chatID, "LED yoqildi!", "");
+  request->send(200, "text/html", "<html><body><h1>LED Yoqilgan</h1><br><a href='/'>Orqaga</a></body></html>");
+}
+
+// Sayt orqali LEDni o'chirish
+void handleLEDOff(AsyncWebServerRequest *request) {
+  digitalWrite(ledPin, LOW);  // LED ni o'chirish
+  bot.sendMessage(chatID, "LED o'chirildi!", "");
+  request->send(200, "text/html", "<html><body><h1>LED O'chirilgan</h1><br><a href='/'>Orqaga</a></body></html>");
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // LED pinini chiqish sifatida sozlash
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);  // Dastlab LED o'chirilgan
+
+  // Wi-Fi tarmog'iga ulanish
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("WiFi ulanishi muvaffaqiyatli!");
+  Serial.print("IP manzil: ");
+  Serial.println(WiFi.localIP());  // ESP32 ning IP manzilini ko'rsatish
+
+  // HTTPS uchun sertifikatni o'rnatish (SSL)
+  client.setInsecure();  // SSL uchun kerakli qo'shimcha sozlamalar
+
+  // Veb serverni sozlash
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    String html = "<html><body><h1>LED boshqarish</h1>";
+    html += "<button onclick=\"location.href='/on'\">LED Yoqish</button><br><br>";
+    html += "<button onclick=\"location.href='/off'\">LED O'chirish</button>";
+    html += "</body></html>";
+    request->send(200, "text/html", html);
+  });
+
+  server.on("/on", HTTP_GET, handleLEDOn);
+  server.on("/off", HTTP_GET, handleLEDOff);
+
+  // Veb serverni boshlash
+  server.begin();
+}
+
+void loop() {
+  // Telegram botni yangilash (buyruqlarni qabul qilish)
+  int numNewMessages = bot.getUpdates();  // Yangilanishlarni olish
+
+  for (int i = 0; i < numNewMessages; i++) {
+    String message = bot.messages[i].text;
+    String fromName = bot.messages[i].from_name;
+
+    // Telegramdan kelgan buyruqlarni tekshirish
+    if (message == "/on") {
+      digitalWrite(ledPin, HIGH);  // LED'ni yoqish
+      bot.sendMessage(chatID, "LED yoqildi!", "");
+    } else if (message == "/off") {
+      digitalWrite(ledPin, LOW);  // LED'ni o'chirish
+      bot.sendMessage(chatID, "LED o'chirildi!", "");
+    } else {
+      bot.sendMessage(chatID, "No'no' buyruq! Iltimos, /on yoki /off yuboring.", "");
+    }
+  }
+
+  delay(1000);  // 1 soniya kutish
+}
